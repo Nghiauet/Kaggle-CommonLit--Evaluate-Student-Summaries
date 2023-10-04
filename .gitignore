@@ -3,3 +3,6 @@
 /archived/*
 /.venv/*
 /.vscode/*
+/*.zip
+/save_model/*
+1.*

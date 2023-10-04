@@ -140,20 +140,31 @@ seed_everything(seed=42)
 
 # In[5]:
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--learning_rate", type=float, help="Learning rate for the model training")
+parser.add_argument("--attention_probs_dropout_prob", type=float, help="attention_probs_dropout_prob for the model training")
+parser.add_argument("--test_mode", type=lambda x: (str(x).lower() == 'true'))
+args = parser.parse_args()
+print('args', args)
 
 class CFG:
     model_name="debertav3base"
-    learning_rate=0.000016
+    learning_rate=args.learning_rate
     weight_decay=0.03
     hidden_dropout_prob=0.000
-    attention_probs_dropout_prob=0.007
+    attention_probs_dropout_prob=args.attention_probs_dropout_prob
+    # attention_probs_dropout_prob= 0.007
     num_train_epochs=5
     n_splits=4
-    batch_size= 18
+    batch_size= 2
     random_seed=42
     save_steps=100
-    max_length= 512
-    test_mode = False
+    if model_name == "debertav3large":
+        max_length= 1462 
+    else:
+        max_length= 512
+    test_mode = args.test_mode
     device = 'GPU'
 
 
@@ -173,7 +184,7 @@ print(device)
 # In[7]:
 
 
-DATA_DIR = "input/datasets/"
+DATA_DIR = "input/commonlit-evaluate-student-summaries/"
 
 prompts_train = pd.read_csv(DATA_DIR + "prompts_train.csv")
 prompts_test = pd.read_csv(DATA_DIR + "prompts_test.csv")
@@ -554,7 +565,7 @@ class ScoreRegressor:
             load_best_model_at_end=True, # select best model
             learning_rate=learning_rate,
             per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size // 2,
+            per_device_eval_batch_size=batch_size ,
             num_train_epochs=num_train_epochs,
             weight_decay=weight_decay,
             report_to='none',
@@ -613,7 +624,7 @@ class ScoreRegressor:
             output_dir=model_fold_dir,
             do_train = False,
             do_predict = True,
-            per_device_eval_batch_size = 4,   
+            per_device_eval_batch_size = CFG.batch_size,   
             dataloader_drop_last = False,
         )
 

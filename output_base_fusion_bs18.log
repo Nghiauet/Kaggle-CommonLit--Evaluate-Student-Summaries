@@ -1,0 +1,15 @@
+cuda
+fold 0:
+model_fold_dir debertav3base_lr16e-05/fold_0/0
+start training
+{'eval_loss': 0.3641716241836548, 'eval_rmse': 0.5934115648269653, 'eval_runtime': 7.293, 'eval_samples_per_second': 282.05, 'eval_steps_per_second': 31.4, 'epoch': 0.35}
+{'eval_loss': 0.2763652801513672, 'eval_rmse': 0.5198414325714111, 'eval_runtime': 7.3123, 'eval_samples_per_second': 281.305, 'eval_steps_per_second': 31.317, 'epoch': 0.7}
+{'eval_loss': 0.2587635815143585, 'eval_rmse': 0.5016987323760986, 'eval_runtime': 7.3135, 'eval_samples_per_second': 281.262, 'eval_steps_per_second': 31.312, 'epoch': 1.06}
+{'eval_loss': 0.2421804964542389, 'eval_rmse': 0.48561424016952515, 'eval_runtime': 7.3078, 'eval_samples_per_second': 281.479, 'eval_steps_per_second': 31.336, 'epoch': 1.41}
+{'loss': 0.3378, 'learning_rate': 1.0366197183098592e-05, 'epoch': 1.76}
+{'eval_loss': 0.22183360159397125, 'eval_rmse': 0.46648651361465454, 'eval_runtime': 7.2954, 'eval_samples_per_second': 281.957, 'eval_steps_per_second': 31.389, 'epoch': 1.76}
+{'eval_loss': 0.22710682451725006, 'eval_rmse': 0.474062979221344, 'eval_runtime': 7.3376, 'eval_samples_per_second': 280.339, 'eval_steps_per_second': 31.209, 'epoch': 2.11}
+{'eval_loss': 0.24117423593997955, 'eval_rmse': 0.48521918058395386, 'eval_runtime': 7.3491, 'eval_samples_per_second': 279.9, 'eval_steps_per_second': 31.16, 'epoch': 2.46}
+{'eval_loss': 0.26377809047698975, 'eval_rmse': 0.5118899941444397, 'eval_runtime': 7.3502, 'eval_samples_per_second': 279.855, 'eval_steps_per_second': 31.156, 'epoch': 2.82}
+{'eval_loss': 0.25533321499824524, 'eval_rmse': 0.4989747107028961, 'eval_runtime': 7.3526, 'eval_samples_per_second': 279.764, 'eval_steps_per_second': 31.145, 'epoch': 3.17}
+{'loss': 0.1679, 'learning_rate': 4.732394366197182e-06, 'epoch': 3.52}

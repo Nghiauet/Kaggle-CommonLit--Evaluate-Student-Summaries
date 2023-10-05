@@ -138,8 +138,7 @@ seed_everything(seed=42)
 
 # ## Class CFG
 
-# In[ ]:
-
+# In[5]:
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -154,9 +153,10 @@ print('args', args)
 class CFG:
     model_name=args.model_name
     learning_rate=args.learning_rate
-    weight_decay=0.02
+    weight_decay=0.03
     hidden_dropout_prob=0.000
     attention_probs_dropout_prob=args.attention_probs_dropout_prob
+    # attention_probs_dropout_prob= 0.007
     num_train_epochs=5
     n_splits=4
     batch_size= 2
@@ -168,29 +168,6 @@ class CFG:
         max_length= 512
     test_mode = args.test_mode
     device = 'GPU'
-
-
-# In[5]:
-
-
-# class CFG:
-#     model_name="debertav3large"
-#     learning_rate=0.000019
-#     weight_decay=0.03
-#     hidden_dropout_prob=0.000
-#     attention_probs_dropout_prob=0.007
-#     num_train_epochs=1
-#     n_splits=2
-#     batch_size= 2
-#     random_seed=42
-#     save_steps=100
-#     max_length= 512
-#     test_mode = True
-#     device = 'GPU'
-#     if model_name == "debertav3large":
-#         max_length= 1462 
-#     else:
-#         max_length= 512    
 
 
 # In[6]:
@@ -569,16 +546,11 @@ class ScoreRegressor:
         train_df = train_df[[self.input_col] + self.target_cols]
         valid_df = valid_df[[self.input_col] + self.target_cols]
         
-        # model_content = AutoModelForSequenceClassification.from_pretrained(
-        #     f"./input/{self.model_name}", 
-        #     config=self.model_config
-        # )
-        def model_init():
-            return AutoModelForSequenceClassification.from_pretrained(
-                f"./input/{self.model_name}", 
-                config=self.model_config
-            )
-        model_content = model_init()
+        model_content = AutoModelForSequenceClassification.from_pretrained(
+            f"./input/{self.model_name}", 
+            config=self.model_config
+        )
+
         train_dataset = Dataset.from_pandas(train_df, preserve_index=False) 
         val_dataset = Dataset.from_pandas(valid_df, preserve_index=False) 
         # print('create train and val dataset')
@@ -609,7 +581,6 @@ class ScoreRegressor:
         )
         # print('define trainer')
         trainer = Trainer(
-            # model_init=model_init,
             model=model_content,
             args=training_args,
             train_dataset=train_tokenized_datasets,
@@ -619,10 +590,8 @@ class ScoreRegressor:
             data_collator=self.data_collator
         )
         print('start training')
-        # init model 
+        # print('trainer.train_dataset[0]' , trainer.train_dataset[0])
         trainer.train()
-        # best_run = trainer.hyperparameter_search(n_trials=2, direction="maximize", hp_space=CFG.hp_space)
-        # print(best_run)
         print('finish training')
         model_content.save_pretrained(self.model_dir)
         self.tokenizer.save_pretrained(self.model_dir)

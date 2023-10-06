@@ -14,15 +14,15 @@ username = token['username']
 print('username: ', username)
 def zip_dir(directory_path, zip_path):
     # Use a system "zip -r" command to create a zip file
-    # subprocess.run(["zip", "-r", zip_path, directory_path])
-    return True
+    subprocess.run(["zip", "-r", zip_path, directory_path])
 
 def create_metadata_file(dataset_folder, dataset_id, username, title):
     dataset_id = dataset_id.replace(' ', '-')
+    dataset_id = dataset_id.replace('_', '-')
+    dataset_id = dataset_id.replace('.', '-')
     title = title.replace('_', '-')
     title = title.replace('.', '-')
     # remove special characters
-    # dataset_id = ''.join(e for e in dataset_id if e.isalnum())
     metadata = {
         "licenses": [{"name": "CC0-1.0"}],
         # replace all _ by - in dataset_id
@@ -43,7 +43,6 @@ def push_to_kaggle(zip_directory, dataset_folder, description, dataset_name, use
     # Create metadata file
     create_metadata_file(zip_directory, dataset_name, username, description)
 
-    # If dataset does not exist, create one.
     # check if dataset have existed
     try :
         command = f"kaggle datasets create -p {zip_directory}/ "
@@ -53,15 +52,31 @@ def push_to_kaggle(zip_directory, dataset_folder, description, dataset_name, use
         print(f"Dataset {full_dataset_name} already exists.")
 
 
-list_folders = ["1.debertav3base_lr2e-05_save_bs19","1.debertav3base_lr16e-05_save_bs19","1.debertav3large_lr16e-05_save_bs_19"]  # replace with your paths
+list_folders = [
+                # "1.debertav3base_lr2e-05_save_bs19", DONE
+                # 1.debertav3base_lr16e-05_save_bs18 DONE
+                # "1.debertav3base_lr16e-05_save_bs19", DONE
+                # "debertav3base_lr18e-05" , DONE
+                # "debertav3base_lr17e-05", DONE
+                # "debertav3base_lr15e-05", DONE
+                # "debertav3base_lr21e-05", DONE
+                # "debertav3base_lr22e-05",DONE
+                # "debertav3base_lr5e-05", DONE
+                
+                # "debertav3large_lr12e-05", #wating uploading 
+                # "debertav3large_lr13e-05", #watting uploading
+                # "debertav3large_lr1e-05", #watting uploading
+                # "debertav3large_lr15e-05" , #uploading
+                # "1.debertav3large_lr16e-05_save_bs_19" DONE error when mcrse = 51
+                ]  # replace with your paths
 
 for folder in list_folders:
-    zip_directory = os.path.abspath(f"zip-of{folder}")  # Folder to save zip files
+    zip_directory = os.path.abspath(f"zip-of-{folder}")  # Folder to save zip files
     if not os.path.exists(zip_directory):
         os.makedirs(zip_directory)
 
     zip_path = os.path.join(zip_directory, f"{folder}.zip")
     print(f"Zipping {folder} to {zip_path}")
-    zip_dir(folder, zip_path)
+    zip_dir(folder, zip_path) 
     print(f"Pushing {zip_directory} to Kaggle")
-push_to_kaggle(zip_directory, folder, f"CL_{folder}", f"CL_{folder}", username)
+    push_to_kaggle(zip_directory, folder, f"CL_{folder}", f"CL_{folder}", username)

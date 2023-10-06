@@ -125,13 +125,13 @@ def seed_everything(seed: int):
     import numpy as np
     import torch
     
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True # load seed
+    # random.seed(seed)
+    # os.environ['PYTHONHASHSEED'] = str(seed)
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # torch.cuda.manual_seed(seed)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = True # load seed
     
 seed_everything(seed=42)
 
@@ -154,12 +154,12 @@ print('args', args)
 class CFG:
     model_name=args.model_name
     learning_rate=args.learning_rate
-    weight_decay=0.02
+    weight_decay=0.03
     hidden_dropout_prob=0.000
     attention_probs_dropout_prob=args.attention_probs_dropout_prob
     num_train_epochs=5
     n_splits=4
-    batch_size= 2
+    batch_size= 19
     random_seed=42
     save_steps=100
     if model_name == "debertav3large":

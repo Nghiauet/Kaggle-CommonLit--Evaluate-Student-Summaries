@@ -68,7 +68,17 @@ list_folders = [
                 # "debertav3large_lr1e-05", #watting uploading
                 # "debertav3large_lr15e-05" , #uploading
                 # "1.debertav3large_lr16e-05_save_bs_19" DONE error when mcrse = 51
-                ]  # replace with your paths
+                'debertav3large_lr8e-06_att_0007',
+                'debertav3large_lr9e-06_att_0007',
+                'debertav3large_lr11e-05_att_0007'
+                'debertav3large_lr12e-05_att_0007'
+                'debertav3large_lr13e-05_att_0007'
+                'debertav3large_lr14e-05_att_0007',
+                'debertav3large_lr15e-05_att_0007',
+                'debertav3large_lr16e-05_att_0007',
+                'debertav3large_lr17e-05_att_0007',
+                'debertav3large_lr18e-05_att_0007'
+                ]  
 
 for folder in list_folders:
     zip_directory = os.path.abspath(f"zip-of-{folder}")  # Folder to save zip files
@@ -77,6 +87,6 @@ for folder in list_folders:
 
     zip_path = os.path.join(zip_directory, f"{folder}.zip")
     print(f"Zipping {folder} to {zip_path}")
-    zip_dir(folder, zip_path) 
+    # zip_dir(folder, zip_path) 
     print(f"Pushing {zip_directory} to Kaggle")
     push_to_kaggle(zip_directory, folder, f"CL_{folder}", f"CL_{folder}", username)

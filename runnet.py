@@ -1,6 +1,17 @@
 # runner.py
 import os
-learning_rate_list = [0.00000,0.0000011, 0.000014,0.000019]
+learning_rate_list = [0.000008,
+                      0.000009,
+                      0.000010,
+                      0.000011,
+                      0.000012,
+                      0.000013,
+                      0.000014,
+                      0.000015,
+                      0.000016,
+                      0.000017,
+                      0.000018,
+                      ]
 for learning_rate in learning_rate_list:
     # round learning rate to 6 decimal places
     learning_rate = round(learning_rate, 7)

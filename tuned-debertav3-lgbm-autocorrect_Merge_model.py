@@ -159,7 +159,7 @@ class CFG:
     attention_probs_dropout_prob=args.attention_probs_dropout_prob
     num_train_epochs=5
     n_splits=4
-    batch_size= 2
+    batch_size= 3
     random_seed=42
     save_steps=100
     if model_name == "debertav3large":
@@ -496,7 +496,6 @@ class ScoreRegressor:
         self.target_cols = target
 
         self.model_name = model_name
-        lr = str(CFG.learning_rate).replace(".", "")
         self.model_dir = model_dir
         self.max_length = max_length
         
@@ -695,7 +694,8 @@ def train_by_fold(
     ):
     # delete old model files
     lr = str(CFG.learning_rate).replace('.','')
-    model_dir_base = f"{model_name}_lr{lr}"
+    att = str(CFG.attention_probs_dropout_prob).replace('.','')
+    model_dir_base = f"{model_name}_lr{lr}_att_{att}"
     if os.path.exists(model_dir_base):
         shutil.rmtree(model_dir_base)
     
@@ -747,7 +747,8 @@ def validate(
         
         valid_data = train_df[train_df["fold"] == fold]
         lr = str(CFG.learning_rate).replace(".", "")
-        model_dir_base = f"{model_name}_lr{lr}"
+        att = str(CFG.attention_probs_dropout_prob).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_att_{att}"
         if save_each_model == True:
             model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
@@ -784,7 +785,8 @@ def predict(
     for fold in range(CFG.n_splits):
         print(f"fold {fold}:")
         lr = str(CFG.learning_rate).replace(".", "")
-        model_dir_base = f"{model_name}_lr{lr}"
+        att = str(CFG.attention_probs_dropout_prob).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_att_{att}"
         if save_each_model == True:
             model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 

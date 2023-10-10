@@ -71,14 +71,17 @@ list_folders = [
                 # 'debertav3large_lr8e-06_att_0007', # upload 
                 # 'debertav3large_lr9e-06_att_0007', # upload 
                 # 'debertav3large_lr1e-05_att_0007', # upload 
-                'debertav3large_lr11e-05_att_0007',
-                'debertav3large_lr12e-05_att_0007',
-                'debertav3large_lr13e-05_att_0007',
-                'debertav3large_lr14e-05_att_0007',
+                # 'debertav3large_lr11e-05_att_0007',
+                # 'debertav3large_lr12e-05_att_0007',
+                # 'debertav3large_lr13e-05_att_0007',
+                # 'debertav3large_lr14e-05_att_0007',
                 # 'debertav3large_lr15e-05_att_0007', # upload 
                 # 'debertav3large_lr16e-05_att_0007', # upload 
                 # 'debertav3large_lr17e-05_att_0007', # upload 
                 # 'debertav3large_lr18e-05_att_0007' # upload 
+                'debertav3large_lr6e-06_att_0006',
+                'debertav3large_lr7e-06_att_0006',
+                'debertav3large_lr8e-06_att_0006',
                 ]  
 
 for folder in list_folders:

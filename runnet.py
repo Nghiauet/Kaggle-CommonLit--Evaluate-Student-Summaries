@@ -1,21 +1,16 @@
 # runner.py
 import os
-learning_rate_list = [0.000008,
-                      0.000009,
-                      0.000010,
-                      0.000011,
-                      0.000012,
-                      0.000013,
-                      0.000014,
-                      0.000015,
-                      0.000016,
-                      0.000017,
-                      0.000018,
+learning_rate_list = [0.000006,
+                      0.000007,
+                      0.000008,
+                      0.00001,    
+                        0.000012,
+                        0.000013,
                       ]
 for learning_rate in learning_rate_list:
     # round learning rate to 6 decimal places
     learning_rate = round(learning_rate, 7)
-    attention_probs_dropout_prob = 0.007
+    attention_probs_dropout_prob = 0.006
     test_mode = False
     model_name = 'debertav3large'
     command = f"python tuned-debertav3-lgbm-autocorrect_Merge_model.py --learning_rate {learning_rate} --attention_probs_dropout_prob {attention_probs_dropout_prob} --test_mode {test_mode} --model_name {model_name}| tee log_file/{model_name}_{learning_rate}_att_{attention_probs_dropout_prob}.log"

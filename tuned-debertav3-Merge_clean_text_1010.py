@@ -57,20 +57,20 @@
 # - https://www.kaggle.com/code/tsunotsuno/debertav3-lgbm-with-feature-engineering
 # 
 
-# In[24]:
+# In[36]:
 
 
 # !pip install "./input/autocorrect-2.6.1.zip"
 # !pip install "./input/pyspellchecker-0.7.2-py3-none-any.whl"
 
 
-# In[25]:
+# In[37]:
 
 
 # nltk.download("punkt")
 
 
-# In[26]:
+# In[38]:
 
 
 from typing import List
@@ -117,7 +117,7 @@ tqdm.pandas()
 
 
 
-# In[27]:
+# In[39]:
 
 
 def seed_everything(seed: int):
@@ -138,7 +138,41 @@ seed_everything(seed=42)
 
 # ## Class CFG
 
-# In[28]:
+# In[40]:
+
+
+# import argparse
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--learning_rate", type=float, help="Learning rate for the model training")
+# parser.add_argument("--attention_probs_dropout_prob", type=float, help="attention_probs_dropout_prob for the model training")
+# parser.add_argument("--test_mode", type=lambda x: (str(x).lower() == 'true'))
+# # add model name
+# parser.add_argument("--model_name", type=str, help="model name for the model training")
+# args = parser.parse_args()
+# print('args', args)
+
+# class CFG:
+#     model_name=args.model_name
+#     learning_rate=args.learning_rate
+#     weight_decay=0.03
+#     hidden_dropout_prob=0.000
+#     attention_probs_dropout_prob=args.attention_probs_dropout_prob
+#     # attention_probs_dropout_prob= 0.007
+#     num_train_epochs=5
+#     n_splits=4
+#     batch_size= 2
+#     random_seed=42
+#     save_steps=100
+#     if model_name == "debertav3large":
+#         max_length= 1462 
+#     else:
+#         max_length= 512
+#     test_mode = args.test_mode
+#     device = 'GPU'
+
+
+# In[41]:
+
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -160,13 +194,12 @@ class CFG:
     batch_size= 2
     random_seed=42
     save_steps=100
-    max_length= 1024 
+    max_length= 1462 
     test_mode = args.test_mode
-    device = 'GPU'
+    device = 'GPU'    
 
 
-
-# In[29]:
+# In[42]:
 
 
 # print device
@@ -179,10 +212,10 @@ print(device)
 
 # ## Dataload
 
-# In[30]:
+# In[43]:
 
 
-DATA_DIR = "input/datasets/"
+DATA_DIR = "input/commonlit-evaluate-student-summaries/"
 
 prompts_train = pd.read_csv(DATA_DIR + "prompts_train.csv")
 prompts_test = pd.read_csv(DATA_DIR + "prompts_test.csv")
@@ -193,13 +226,13 @@ sample_submission = pd.read_csv(DATA_DIR + "sample_submission.csv")
 
 # # Exploratory Data Analysis
 
-# In[31]:
+# In[44]:
 
 
 prompts_train.head()
 
 
-# In[32]:
+# In[45]:
 
 
 prompts_train.head()
@@ -226,14 +259,27 @@ prompts_train.head()
 #   - spelling: pyspellchecker
 # 
 
-# In[33]:
+# In[46]:
 
 
-class Preprocessor:
+from textblob import TextBlob
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from nltk import ne_chunk, word_tokenize, pos_tag
+from bs4 import BeautifulSoup
+
+# nltk.downloader.download('vader_lexicon')
+import pyphen
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+dic = pyphen.Pyphen(lang='en')
+sid = SentimentIntensityAnalyzer()
+
+class Preprocessor2:
     def __init__(self, 
                 model_name: str,
                 ) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(f"./input/{model_name}")
+        self.tokenizer = AutoTokenizer.from_pretrained(f"input/{model_name}")
         self.twd = TreebankWordDetokenizer()
         self.STOP_WORDS = set(stopwords.words('english'))
         
@@ -241,6 +287,15 @@ class Preprocessor:
         self.speller = Speller(lang='en')
         self.spellchecker = SpellChecker() 
         
+    def calculate_text_similarity(self, row):
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform([row['prompt_text'], row['text']])
+        return cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2]).flatten()[0]
+    
+    def sentiment_analysis(self, text):
+        analysis = TextBlob(text)
+        return analysis.sentiment.polarity, analysis.sentiment.subjectivity
+    
     def word_overlap_count(self, row):
         """ intersection(prompt_text, text) """        
         def check_is_stop_word(word):
@@ -317,10 +372,114 @@ class Preprocessor:
 
         return amount_miss
     
+    def calculate_unique_words(self,text):
+        unique_words = set(text.split())
+        return len(unique_words)
+    
     def add_spelling_dictionary(self, tokens: List[str]) -> List[str]:
         """dictionary update for pyspell checker and autocorrect"""
         self.spellchecker.word_frequency.load_words(tokens)
         self.speller.nlp_data.update({token:1000 for token in tokens})
+        
+    def calculate_pos_ratios(self , text):
+        pos_tags = pos_tag(nltk.word_tokenize(text))
+        pos_counts = Counter(tag for word, tag in pos_tags)
+        total_words = len(pos_tags)
+        ratios = {tag: count / total_words for tag, count in pos_counts.items()}
+        return ratios
+    
+    def calculate_punctuation_ratios(self,text):
+        total_chars = len(text)
+        punctuation_counts = Counter(char for char in text if char in '.,!?;:"()[]{}')
+        ratios = {char: count / total_chars for char, count in punctuation_counts.items()}
+        return ratios
+    
+    def calculate_keyword_density(self,row):
+        keywords = set(row['prompt_text'].split())
+        text_words = row['text'].split()
+        keyword_count = sum(1 for word in text_words if word in keywords)
+        return keyword_count / len(text_words)
+    
+    def count_syllables(self,word):
+        hyphenated_word = dic.inserted(word)
+        return len(hyphenated_word.split('-'))
+
+    def flesch_reading_ease_manual(self,text):
+        total_sentences = len(TextBlob(text).sentences)
+        total_words = len(TextBlob(text).words)
+        total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
+
+        if total_sentences == 0 or total_words == 0:
+            return 0
+
+        flesch_score = 206.835 - 1.015 * (total_words / total_sentences) - 84.6 * (total_syllables / total_words)
+        return flesch_score
+    
+    def flesch_kincaid_grade_level(self, text):
+        total_sentences = len(TextBlob(text).sentences)
+        total_words = len(TextBlob(text).words)
+        total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
+
+        if total_sentences == 0 or total_words == 0:
+            return 0
+
+        fk_grade = 0.39 * (total_words / total_sentences) + 11.8 * (total_syllables / total_words) - 15.59
+        return fk_grade
+    
+    def gunning_fog(self, text):
+        total_sentences = len(TextBlob(text).sentences)
+        total_words = len(TextBlob(text).words)
+        complex_words = sum(1 for word in TextBlob(text).words if self.count_syllables(word) > 2)
+
+        if total_sentences == 0 or total_words == 0:
+            return 0
+
+        fog_index = 0.4 * ((total_words / total_sentences) + 100 * (complex_words / total_words))
+        return fog_index
+    
+    def calculate_sentiment_scores(self,text):
+        sentiment_scores = sid.polarity_scores(text)
+        return sentiment_scores
+    
+    def count_difficult_words(self, text, syllable_threshold=3):
+        words = TextBlob(text).words
+        difficult_words_count = sum(1 for word in words if self.count_syllables(word) >= syllable_threshold)
+        return difficult_words_count
+
+    def text_cleaning(self, text):
+        '''
+        Cleans text into a basic form for NLP. Operations include the following:-
+        1. Remove special charecters like &, #, etc
+        2. Removes extra spaces
+        3. Removes embedded URL links
+        4. Removes HTML tags
+        5. Removes emojis
+
+        text - Text piece to be cleaned.
+        '''
+        template = re.compile(r'https?://\S+|www\.\S+')  # Removes website links
+        text = template.sub(r'', text)
+
+        soup = BeautifulSoup(text, 'lxml')  # Removes HTML tags
+        only_text = soup.get_text()
+        text = only_text
+
+        emoji_pattern = re.compile("["
+                                u"\U0001F600-\U0001F64F"  # emoticons
+                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                                u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                                u"\U00002702-\U000027B0"
+                                u"\U000024C2-\U0001F251"
+                                "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(r'', text)
+
+        text = re.sub(r"[^a-zA-Z\d]", " ", text) # Remove special Charecters
+        text = re.sub('\n+', '\n', text) 
+        text = re.sub('\.+', '.', text) 
+        text = re.sub(' +', ' ', text) # Remove Extra Spaces 
+
+        return text
     
     def run(self, 
             prompts: pd.DataFrame,
@@ -348,20 +507,42 @@ class Preprocessor:
             lambda x: self.add_spelling_dictionary(x)
         )
         
-        #         from IPython.core.debugger import Pdb; Pdb().set_trace()
+        prompts['gunning_fog_prompt'] = prompts['prompt_text'].apply(self.gunning_fog)
+        prompts['flesch_kincaid_grade_level_prompt'] = prompts['prompt_text'].apply(self.flesch_kincaid_grade_level)
+        prompts['flesch_reading_ease_prompt'] = prompts['prompt_text'].apply(self.flesch_reading_ease_manual)
+
+        
+#         from IPython.core.debugger import Pdb; Pdb().set_trace()
         # fix misspelling
         summaries["fixed_summary_text"] = summaries["text"].progress_apply(
+            lambda x: self.text_cleaning(x)
+        )
+        summaries["fixed_summary_text"] = summaries["fixed_summary_text"].progress_apply(
             lambda x: self.speller(x)
-        ) # fix mission spelling
+        )
+        
         
         # count misspelling
-        summaries["splling_err_num"] = summaries["text"].progress_apply(self.spelling) # count number of misspelling 
+        summaries["splling_err_num"] = summaries["text"].progress_apply(self.spelling)
         
         # merge prompts and summaries
-        input_df = summaries.merge(prompts, how="left", on="prompt_id") 
+        input_df = summaries.merge(prompts, how="left", on="prompt_id")
+        input_df['flesch_reading_ease'] = input_df['text'].apply(self.flesch_reading_ease_manual)
+        input_df['word_count'] = input_df['text'].apply(lambda x: len(x.split()))
+        input_df['sentence_length'] = input_df['text'].apply(lambda x: len(x.split('.')))
+        input_df['vocabulary_richness'] = input_df['text'].apply(lambda x: len(set(x.split())))
+
+        input_df['word_count2'] = [len(t.split(' ')) for t in input_df.text]
+        input_df['num_unq_words']=[len(list(set(x.lower().split(' ')))) for x in input_df.text]
+        input_df['num_chars']= [len(x) for x in input_df.text]
+
+        # Additional features
+        input_df['avg_word_length'] = input_df['text'].apply(lambda x: np.mean([len(word) for word in x.split()]))
+        input_df['comma_count'] = input_df['text'].apply(lambda x: x.count(','))
+        input_df['semicolon_count'] = input_df['text'].apply(lambda x: x.count(';'))
 
         # after merge preprocess
-        # input_df['length_ratio'] = input_df['summary_length'] / input_df['prompt_length']
+        input_df['length_ratio'] = input_df['summary_length'] / input_df['prompt_length']
         
         input_df['word_overlap_count'] = input_df.progress_apply(self.word_overlap_count, axis=1)
         input_df['bigram_overlap_count'] = input_df.progress_apply(
@@ -376,34 +557,78 @@ class Preprocessor:
         
         input_df['quotes_count'] = input_df.progress_apply(self.quotes_count, axis=1)
         
+        input_df['exclamation_count'] = input_df['text'].apply(lambda x: x.count('!'))
+        input_df['question_count'] = input_df['text'].apply(lambda x: x.count('?'))
+        input_df['pos_ratios'] = input_df['text'].apply(self.calculate_pos_ratios)
+
+        # Convert the dictionary of POS ratios into a single value (mean)
+        input_df['pos_mean'] = input_df['pos_ratios'].apply(lambda x: np.mean(list(x.values())))
+        input_df['punctuation_ratios'] = input_df['text'].apply(self.calculate_punctuation_ratios)
+
+        # Convert the dictionary of punctuation ratios into a single value (sum)
+        input_df['punctuation_sum'] = input_df['punctuation_ratios'].apply(lambda x: np.sum(list(x.values())))
+        input_df['keyword_density'] = input_df.apply(self.calculate_keyword_density, axis=1)
+        input_df['jaccard_similarity'] = input_df.apply(lambda row: len(set(word_tokenize(row['prompt_text'])) & set(word_tokenize(row['text']))) / len(set(word_tokenize(row['prompt_text'])) | set(word_tokenize(row['text']))), axis=1)
+        tqdm.pandas(desc="Performing Sentiment Analysis")
+        input_df[['sentiment_polarity', 'sentiment_subjectivity']] = input_df['text'].progress_apply(
+            lambda x: pd.Series(self.sentiment_analysis(x))
+        )
+        tqdm.pandas(desc="Calculating Text Similarity")
+        input_df['text_similarity'] = input_df.progress_apply(self.calculate_text_similarity, axis=1)
+        #Calculate sentiment scores for each row
+        input_df['sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_scores)
+        
+        input_df['gunning_fog'] = input_df['text'].apply(self.gunning_fog)
+        input_df['flesch_kincaid_grade_level'] = input_df['text'].apply(self.flesch_kincaid_grade_level)
+        input_df['count_difficult_words'] = input_df['text'].apply(self.count_difficult_words)
+
+        # Convert sentiment_scores into individual columns
+        sentiment_columns = pd.DataFrame(list(input_df['sentiment_scores']))
+        input_df = pd.concat([input_df, sentiment_columns], axis=1)
+        input_df['sentiment_scores_prompt'] = input_df['prompt_text'].apply(self.calculate_sentiment_scores)
+        # Convert sentiment_scores_prompt into individual columns
+        sentiment_columns_prompt = pd.DataFrame(list(input_df['sentiment_scores_prompt']))
+        sentiment_columns_prompt.columns = [col +'_prompt' for col in sentiment_columns_prompt.columns]
+        input_df = pd.concat([input_df, sentiment_columns_prompt], axis=1)
+        columns =  ['pos_ratios', 'sentiment_scores', 'punctuation_ratios', 'sentiment_scores_prompt']
+        cols_to_drop = [col for col in columns if col in input_df.columns]
+        if cols_to_drop:
+            input_df = input_df.drop(columns=cols_to_drop)
+        
+        print(cols_to_drop)
         return input_df.drop(columns=["summary_tokens", "prompt_tokens"])
     
-preprocessor = Preprocessor(model_name=CFG.model_name)
+
+
+# In[47]:
+
+
+preprocessor = Preprocessor2(model_name=CFG.model_name)
 
 
 # ## Create the train and test sets
 # 
 
-# In[34]:
+# In[48]:
 
 
 if CFG.test_mode : 
-    prompts_train = prompts_train[:100]
-    prompts_test = prompts_test[:100]
-    summaries_train = summaries_train[:100]
-    summaries_test = summaries_test[:100]
+    prompts_train = prompts_train[:12]
+    prompts_test = prompts_test[:12]
+    summaries_train = summaries_train[:12]
+    summaries_test = summaries_test[:12]
 
 
-# In[35]:
+# In[49]:
 
 
 train = preprocessor.run(prompts_train, summaries_train, mode="train")
 test = preprocessor.run(prompts_test, summaries_test, mode="test")
-
+# train = pd.read_csv("input/train_preprocess_2.csv")
 train.head()
 
 
-# In[36]:
+# In[50]:
 
 
 gkf = GroupKFold(n_splits=CFG.n_splits)
@@ -414,16 +639,15 @@ for i, (_, val_index) in enumerate(gkf.split(train, groups=train["prompt_id"])):
 train.head()
 
 
-# ## Model Function Definition
+# ## Define functions metrics
 
-# In[37]:
+# In[51]:
 
 
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
     rmse = mean_squared_error(labels, predictions, squared=False)
     return {"rmse": rmse}
-
 def compute_mcrmse(eval_pred):
     """
     Calculates mean columnwise root mean squared error
@@ -449,14 +673,14 @@ def compt_score(content_true, content_pred, wording_true, wording_pred):
 
 # ## Deberta Regressor
 
-# In[38]:
+# In[52]:
 
 
-class ContentScoreRegressor:
+class ScoreRegressor:
     def __init__(self, 
                 model_name: str,
                 model_dir: str,
-                target: str,
+                target: list,
                 hidden_dropout_prob: float,
                 attention_probs_dropout_prob: float,
                 max_length: int,
@@ -466,22 +690,22 @@ class ContentScoreRegressor:
         
         self.text_cols = [self.input_col] 
         self.target = target
-        self.target_cols = [target]
+        self.target_cols = target
 
         self.model_name = model_name
+        lr = str(CFG.learning_rate).replace(".", "")
         self.model_dir = model_dir
         self.max_length = max_length
         
         self.tokenizer = AutoTokenizer.from_pretrained(f"./input/{model_name}")
-        self.model_config = AutoConfig.from_pretrained(f"./input/{model_name}")
-        
+        self.model_config = AutoConfig.from_pretrained(f"./input/{model_name}" )
+        # print(self.model_config)
         self.model_config.update({
             "hidden_dropout_prob": hidden_dropout_prob,
             "attention_probs_dropout_prob": attention_probs_dropout_prob,
-            "num_labels": 1,
+            "num_labels": 2,
             "problem_type": "regression",
         })
-        
         seed_everything(seed=42)
 
         self.data_collator = DataCollatorWithPadding(
@@ -490,14 +714,15 @@ class ContentScoreRegressor:
 
 
     def tokenize_function(self, examples: pd.DataFrame):
-        labels = [examples[self.target]]
+        # labels = ['content' , 'wording']
+        # print('labels', labels)
         tokenized = self.tokenizer(examples[self.input_col],
                          padding=False,
                          truncation=True,
                          max_length=self.max_length)
         return {
             **tokenized,
-            "labels": labels,
+            "labels": [examples['content'], examples['wording']],
         }
     
     def tokenize_function_test(self, examples: pd.DataFrame):
@@ -520,6 +745,7 @@ class ContentScoreRegressor:
         """fine-tuning"""
         
         sep = self.tokenizer.sep_token
+        # print('sep', sep)
         train_df[self.input_col] = (
                     train_df["prompt_title"] + sep 
                     + train_df["prompt_question"] + sep 
@@ -531,30 +757,42 @@ class ContentScoreRegressor:
                     + valid_df["prompt_question"] + sep 
                     + valid_df["fixed_summary_text"]
                   )
-        print(train_df.shape, valid_df.shape)
-        # filter train_df with input_col have more than 5000 tokens
-
         train_df = train_df[[self.input_col] + self.target_cols]
         valid_df = valid_df[[self.input_col] + self.target_cols]
-        model_content = AutoModelForSequenceClassification.from_pretrained(
-            f"./input/{self.model_name}", 
-            config=self.model_config
-        )
+        
+        def model_init():
+            print("load model: ", self.model_name)
+            
+            return AutoModelForSequenceClassification.from_pretrained(
+                f"./input/{self.model_name}", 
+                config=self.model_config
+            )
+        model_content = model_init()
+        # # freeze model 
+        # for param in model_content.parameters():
+        #     param.requires_grad = False
 
+        # # Unfreeze the pooler and classifier layers
+        # layers_to_unfreeze = ['pooler.dense.weight', 'pooler.dense.bias', 
+        #                     'classifier.weight', 'classifier.bias', 
+        #                     # 'deberta.encoder.LayerNorm.weight' , 'deberta.encoder.LayerNorm.bias'
+        #                     ]
+        # for name, param in model_content.named_parameters():
+        #     if name in layers_to_unfreeze:
+        #         param.requires_grad = True
         train_dataset = Dataset.from_pandas(train_df, preserve_index=False) 
         val_dataset = Dataset.from_pandas(valid_df, preserve_index=False) 
-        
         train_tokenized_datasets = train_dataset.map(self.tokenize_function, batched=False)
         val_tokenized_datasets = val_dataset.map(self.tokenize_function, batched=False)
 
-        # eg. "bert/fold_0/"
         model_fold_dir = os.path.join(self.model_dir, str(fold)) 
+        print('model_fold_dir', model_fold_dir)
         training_args = TrainingArguments(
             output_dir=model_fold_dir,
             load_best_model_at_end=True, # select best model
             learning_rate=learning_rate,
             per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=8,
+            per_device_eval_batch_size=batch_size ,
             num_train_epochs=num_train_epochs,
             weight_decay=weight_decay,
             report_to='none',
@@ -563,22 +801,26 @@ class ContentScoreRegressor:
             evaluation_strategy="steps",
             eval_steps=save_steps,
             save_steps=save_steps,
-            metric_for_best_model="rmse",
+            metric_for_best_model="mcrmse",
             save_total_limit=1
         )
-
+        # print('define trainer')
         trainer = Trainer(
+            # model_init=model_init,
             model=model_content,
             args=training_args,
             train_dataset=train_tokenized_datasets,
             eval_dataset=val_tokenized_datasets,
             tokenizer=self.tokenizer,
-            compute_metrics=compute_metrics,
+            compute_metrics=compute_mcrmse,
             data_collator=self.data_collator
         )
-
+        print('start training')
+        # init model 
         trainer.train()
-        
+        # best_run = trainer.hyperparameter_search(n_trials=2, direction="maximize", hp_space=CFG.hp_space)
+        # print(best_run)
+        print('finish training')
         model_content.save_pretrained(self.model_dir)
         self.tokenizer.save_pretrained(self.model_dir)
 
@@ -612,7 +854,7 @@ class ContentScoreRegressor:
             output_dir=model_fold_dir,
             do_train = False,
             do_predict = True,
-            per_device_eval_batch_size = 4,   
+            per_device_eval_batch_size = CFG.batch_size,   
             dataloader_drop_last = False,
         )
 
@@ -628,10 +870,9 @@ class ContentScoreRegressor:
         return preds
 
 
-# ## Train by fold function
-# 
+# ## Training
 
-# In[39]:
+# In[53]:
 
 
 def train_by_fold(
@@ -649,13 +890,14 @@ def train_by_fold(
         save_steps: int,
         max_length:int
     ):
-
     # delete old model files
-    if os.path.exists(model_name):
-        shutil.rmtree(model_name)
+    lr = str(CFG.learning_rate).replace('.','')
+    model_dir_base = f"{model_name}_lr{lr}_clean_text"
+    if os.path.exists(model_dir_base):
+        shutil.rmtree(model_dir_base)
     
-    os.mkdir(model_name)
-        
+    os.mkdir(model_dir_base)
+
     for fold in range(CFG.n_splits):
         print(f"fold {fold}:")
         
@@ -663,11 +905,11 @@ def train_by_fold(
         valid_data = train_df[train_df["fold"] == fold]
         
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        # print('done fold')
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir, 
@@ -675,7 +917,7 @@ def train_by_fold(
             attention_probs_dropout_prob=attention_probs_dropout_prob,
             max_length=max_length,
            )
-        
+        # print('check csr')
         csr.train(
             fold=fold,
             train_df=train_data,
@@ -686,7 +928,7 @@ def train_by_fold(
             num_train_epochs=num_train_epochs,
             save_steps=save_steps,
         )
-
+        # print('check csr train')
 def validate(
     train_df: pd.DataFrame,
     target:str,
@@ -701,12 +943,13 @@ def validate(
         print(f"fold {fold}:")
         
         valid_data = train_df[train_df["fold"] == fold]
-        
+        lr = str(CFG.learning_rate).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_clean_text"
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir,
@@ -719,8 +962,9 @@ def validate(
             test_df=valid_data, 
             fold=fold
         )
-        
-        train_df.loc[valid_data.index, f"{target}_pred"] = pred
+        print('pred shape', pred.shape)
+        train_df.loc[valid_data.index, f"wording_pred"] = pred[:,0]
+        train_df.loc[valid_data.index, f"content_pred"] = pred[:,1]
 
     return train_df
     
@@ -734,15 +978,15 @@ def predict(
     max_length : int
     ):
     """predict using mean folds"""
-
     for fold in range(CFG.n_splits):
         print(f"fold {fold}:")
-        
+        lr = str(CFG.learning_rate).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_clean_text"
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir, 
@@ -756,116 +1000,108 @@ def predict(
             fold=fold
         )
         
-        test_df[f"{target}_pred_{fold}"] = pred
-    
-    test_df[f"{target}"] = test_df[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
-
+        # test_df[f"{target}_pred_{fold}"] = pred
+        test_df[f"wording_pred_{fold}"] = pred[:,0]
+        test_df[f"content_pred_{fold}"] = pred[:,1]
+        
+    # test_df[f"{target}"] = test_df[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
+    test_df[f"wording_pred"] = test_df[[f"wording_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
+    test_df[f"content_pred"] = test_df[[f"content_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
     return test_df
 
 
-# ## Test the model class
+# ## Train by fold function
+# 
 
-# In[40]:
-
-
-# model_name = CFG.model_name
-# fold= 0
-
-# model_dir = f"{model_name}/fold_{fold}"
-# target = "content"
-# hidden_dropout_prob = CFG.hidden_dropout_prob
-# attention_probs_dropout_prob = CFG.attention_probs_dropout_prob
-# max_length = CFG.max_lengthn_splits=CFG.n_splits,
-# batch_size=CFG.batch_size,
-# save_steps=CFG.save_steps,
-# max_length=CFG.max_length
-# learning_rate=CFG.learning_rate
-# weight_decay=CFG.weight_decay
-# num_train_epochs=CFG.num_train_epochs
-# train_df = train  
-# valid_df = test
+# In[54]:
 
 
-# In[41]:
+targets =  ["content", "wording"]
+train_by_fold(
+    train, # this is train dataset
+    model_name=CFG.model_name,
+    save_each_model=False,
+    target=targets,
+    learning_rate=CFG.learning_rate,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    weight_decay=CFG.weight_decay,
+    num_train_epochs=CFG.num_train_epochs,
+    n_splits=CFG.n_splits,
+    batch_size=CFG.batch_size,
+    save_steps=CFG.save_steps,
+    max_length=CFG.max_length
+)
 
 
-# # test ContentScoreRegressor
-# test_model_class = ContentScoreRegressor(
-#     model_name=model_name,
-#     target=target,
-#     model_dir = model_dir, 
-#     hidden_dropout_prob=hidden_dropout_prob,
-#     attention_probs_dropout_prob=attention_probs_dropout_prob,
-#     max_length=max_length,
-#    )
-
-# train_data = train_df[train_df["fold"] != fold]
-# valid_data = train_df[train_df["fold"] == fold]
-# train_data.shape
-# valid_data.shape
-# train_data.head()
-# test_model_class.train(
-#     fold=fold,
-#     train_df=train_data,
-#     valid_df=valid_data, 
-#     batch_size=batch_size,
-#     learning_rate=learning_rate,
-#     weight_decay=weight_decay,
-#     num_train_epochs=num_train_epochs,
-#     save_steps=save_steps,
-# )
-
-
-# ## Train the model
-
-# In[42]:
-
-
-for target in ["content", "wording"]:
-    train_by_fold(
-        train, # this is train dataset
-        model_name=CFG.model_name,
-        save_each_model=False,
-        target=target,
-        learning_rate=CFG.learning_rate,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        weight_decay=CFG.weight_decay,
-        num_train_epochs=CFG.num_train_epochs,
-        n_splits=CFG.n_splits,
-        batch_size=CFG.batch_size,
-        save_steps=CFG.save_steps,
-        max_length=CFG.max_length
-    )
-    
-    
-    train = validate(
-        train,
-        target=target,
-        save_each_model=False,
-        model_name=CFG.model_name,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        max_length=CFG.max_length
-    )
-
+train = validate(
+    train,
+    target=targets,
+    save_each_model=False,
+    model_name=CFG.model_name,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    max_length=CFG.max_length
+)
+for target in targets:
     rmse = mean_squared_error(train[target], train[f"{target}_pred"], squared=False)
     print(f"cv {target} rmse: {rmse}")
+test = predict(
+    test,
+    target=targets,
+    save_each_model=False,
+    model_name=CFG.model_name,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    max_length=CFG.max_length
+)
 
-    test = predict(
-        test,
-        target=target,
-        save_each_model=False,
-        model_name=CFG.model_name,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        max_length=CFG.max_length
-    )
+
+# In[55]:
+
+
+# # load model and see it params
+# model = AutoModelForSequenceClassification.from_pretrained('input/debertav3large')
+
+# for name , params in model.named_parameters():
+#     print(name, params.requires_grad)
+
+
+# In[56]:
+
+
+# for param in model.parameters():
+#     param.requires_grad = False
+
+# # Unfreeze the pooler and classifier layers
+# layers_to_unfreeze = ['pooler.dense.weight', 'pooler.dense.bias', 
+#                       'classifier.weight', 'classifier.bias']
+# for name, param in model.named_parameters():
+#     if name in layers_to_unfreeze:
+#         param.requires_grad = True
+
+
+# In[57]:
+
+
+train.head()
+
+
+# In[58]:
+
+
+preds = train[[f"{target}_pred" for target in targets]].values
+
+
+# In[59]:
+
+
+compute_mcrmse([train[targets].values, preds])
 
 
 # ## LGBM model
 
-# In[ ]:
+# In[60]:
 
 
 targets = ["content", "wording"]
@@ -876,7 +1112,13 @@ drop_columns = ["fold", "student_id", "prompt_id", "text", "fixed_summary_text",
                ] + targets
 
 
-# In[ ]:
+# In[61]:
+
+
+content = train.content
+
+
+# In[62]:
 
 
 model_dict = {}
@@ -885,11 +1127,9 @@ for target in targets:
     models = []
     
     for fold in range(CFG.n_splits):
-        if target == targets[1]:
-          drop_columns.remove(targets[0])
-        X_train_cv = train[train["fold"] != fold].drop(columns=drop_columns)
+        X_train_cv = train[train["fold"] != fold].drop(columns=drop_columns, inplace=False)
         y_train_cv = train[train["fold"] != fold][target]
-
+        
         X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns)
         y_eval_cv = train[train["fold"] == fold][target]
 
@@ -904,7 +1144,8 @@ for target in targets:
             'learning_rate': 0.048,
             'max_depth': 3,
             'lambda_l1': 0.0,
-            'lambda_l2': 0.011
+            'lambda_l2': 0.011,
+            'verbose': -1,
         }
 
         evaluation_results = {}
@@ -915,8 +1156,8 @@ for target in targets:
                           train_set=dtrain,
                           valid_sets=dval,
                           callbacks=[
-                              lgb.early_stopping(stopping_rounds=30, verbose=True),
-                               lgb.log_evaluation(100),
+                              lgb.early_stopping(stopping_rounds=30, verbose=False),
+                              #  lgb.log_evaluation(100),
                               lgb.callback.record_evaluation(evaluation_results)
                             ],
                           )
@@ -925,7 +1166,7 @@ for target in targets:
     model_dict[target] = models
 
 
-# In[ ]:
+# In[63]:
 
 
 # save models
@@ -937,7 +1178,7 @@ with open(f"{CFG.model_name}_model_dict.pickle", 'wb') as f:
 
 # ## CV Score
 
-# In[ ]:
+# In[64]:
 
 
 # cv
@@ -950,7 +1191,7 @@ for target in targets:
     trues = []
     
     for fold, model in enumerate(models):
-        X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns)
+        X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns , inplace=False)
         y_eval_cv = train[train["fold"] == fold][target]
 
         pred = model.predict(X_eval_cv)
@@ -963,15 +1204,17 @@ for target in targets:
     rmses = rmses + [rmse]
 
 print(f"mcrmse : {sum(rmses) / len(rmses)}")
-# deberta large mcrmse : 0.8319814894700264
+# print CFG config 
+for x in CFG.__dict__:
+    print(x, getattr(CFG, x))
 
 
 # ## Predict
 
-# In[ ]:
+# In[65]:
 
 
-drop_columns = [
+drop_columns_2 = [
                 #"fold", 
                 "student_id", "prompt_id", "text", "fixed_summary_text",
                 "prompt_question", "prompt_title", 
@@ -984,7 +1227,7 @@ drop_columns = [
                 ]
 
 
-# In[ ]:
+# In[66]:
 
 
 pred_dict = {}
@@ -993,15 +1236,16 @@ for target in targets:
     preds = []
 
     for fold, model in enumerate(models):
-        X_eval_cv = test.drop(columns=drop_columns)
-
+        X_eval_cv = test.drop(columns=drop_columns_2)
+        # print(X_eval_cv.head())
         pred = model.predict(X_eval_cv)
+        # print('pred shape'  , pred.shape)
         preds.append(pred)
     
     pred_dict[target] = preds
 
 
-# In[ ]:
+# In[67]:
 
 
 for target in targets:
@@ -1012,7 +1256,7 @@ for target in targets:
     test[target] = test[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
 
 
-# In[ ]:
+# In[68]:
 
 
 test
@@ -1020,13 +1264,13 @@ test
 
 # ## Create Submission file
 
-# In[ ]:
+# In[69]:
 
 
 sample_submission
 
 
-# In[ ]:
+# In[70]:
 
 
 test[["student_id", "content", "wording"]].to_csv("submission.csv", index=False)

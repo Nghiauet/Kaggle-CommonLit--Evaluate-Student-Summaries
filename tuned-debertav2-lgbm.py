@@ -57,20 +57,20 @@
 # - https://www.kaggle.com/code/tsunotsuno/debertav3-lgbm-with-feature-engineering
 # 
 
-# In[24]:
+# In[37]:
 
 
 # !pip install "./input/autocorrect-2.6.1.zip"
 # !pip install "./input/pyspellchecker-0.7.2-py3-none-any.whl"
 
 
-# In[25]:
+# In[38]:
 
 
 # nltk.download("punkt")
 
 
-# In[26]:
+# In[39]:
 
 
 from typing import List
@@ -117,7 +117,7 @@ tqdm.pandas()
 
 
 
-# In[27]:
+# In[40]:
 
 
 def seed_everything(seed: int):
@@ -138,7 +138,8 @@ seed_everything(seed=42)
 
 # ## Class CFG
 
-# In[28]:
+# In[41]:
+
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -165,8 +166,13 @@ class CFG:
     device = 'GPU'
 
 
+# In[42]:
 
-# In[29]:
+
+  
+
+
+# In[43]:
 
 
 # print device
@@ -179,10 +185,10 @@ print(device)
 
 # ## Dataload
 
-# In[30]:
+# In[44]:
 
 
-DATA_DIR = "input/datasets/"
+DATA_DIR = "input/commonlit-evaluate-student-summaries/"
 
 prompts_train = pd.read_csv(DATA_DIR + "prompts_train.csv")
 prompts_test = pd.read_csv(DATA_DIR + "prompts_test.csv")
@@ -193,13 +199,13 @@ sample_submission = pd.read_csv(DATA_DIR + "sample_submission.csv")
 
 # # Exploratory Data Analysis
 
-# In[31]:
+# In[45]:
 
 
 prompts_train.head()
 
 
-# In[32]:
+# In[46]:
 
 
 prompts_train.head()
@@ -226,14 +232,14 @@ prompts_train.head()
 #   - spelling: pyspellchecker
 # 
 
-# In[33]:
+# In[47]:
 
 
 class Preprocessor:
     def __init__(self, 
                 model_name: str,
                 ) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(f"./input/{model_name}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.twd = TreebankWordDetokenizer()
         self.STOP_WORDS = set(stopwords.words('english'))
         
@@ -384,26 +390,29 @@ preprocessor = Preprocessor(model_name=CFG.model_name)
 # ## Create the train and test sets
 # 
 
-# In[34]:
+# In[48]:
 
 
 if CFG.test_mode : 
-    prompts_train = prompts_train[:100]
-    prompts_test = prompts_test[:100]
-    summaries_train = summaries_train[:100]
-    summaries_test = summaries_test[:100]
+    prompts_train = prompts_train[:12]
+    prompts_test = prompts_test[:12]
+    summaries_train = summaries_train[:12]
+    summaries_test = summaries_test[:12]
+    train = preprocessor.run(prompts_train, summaries_train, mode="train")
+else:
+    train = pd.read_csv("input/train_preprocess_2.csv")
+    
+    
 
 
-# In[35]:
+# In[49]:
 
 
-train = preprocessor.run(prompts_train, summaries_train, mode="train")
 test = preprocessor.run(prompts_test, summaries_test, mode="test")
-
 train.head()
 
 
-# In[36]:
+# In[50]:
 
 
 gkf = GroupKFold(n_splits=CFG.n_splits)
@@ -414,16 +423,15 @@ for i, (_, val_index) in enumerate(gkf.split(train, groups=train["prompt_id"])):
 train.head()
 
 
-# ## Model Function Definition
+# ## Define functions metrics
 
-# In[37]:
+# In[51]:
 
 
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
     rmse = mean_squared_error(labels, predictions, squared=False)
     return {"rmse": rmse}
-
 def compute_mcrmse(eval_pred):
     """
     Calculates mean columnwise root mean squared error
@@ -449,14 +457,14 @@ def compt_score(content_true, content_pred, wording_true, wording_pred):
 
 # ## Deberta Regressor
 
-# In[38]:
+# In[52]:
 
 
-class ContentScoreRegressor:
+class ScoreRegressor:
     def __init__(self, 
                 model_name: str,
                 model_dir: str,
-                target: str,
+                target: list,
                 hidden_dropout_prob: float,
                 attention_probs_dropout_prob: float,
                 max_length: int,
@@ -466,22 +474,22 @@ class ContentScoreRegressor:
         
         self.text_cols = [self.input_col] 
         self.target = target
-        self.target_cols = [target]
+        self.target_cols = target
 
         self.model_name = model_name
+        lr = str(CFG.learning_rate).replace(".", "")
         self.model_dir = model_dir
         self.max_length = max_length
         
-        self.tokenizer = AutoTokenizer.from_pretrained(f"./input/{model_name}")
-        self.model_config = AutoConfig.from_pretrained(f"./input/{model_name}")
-        
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model_config = AutoConfig.from_pretrained(model_name )
+        # print(self.model_config)
         self.model_config.update({
             "hidden_dropout_prob": hidden_dropout_prob,
             "attention_probs_dropout_prob": attention_probs_dropout_prob,
-            "num_labels": 1,
+            "num_labels": 2,
             "problem_type": "regression",
         })
-        
         seed_everything(seed=42)
 
         self.data_collator = DataCollatorWithPadding(
@@ -490,14 +498,15 @@ class ContentScoreRegressor:
 
 
     def tokenize_function(self, examples: pd.DataFrame):
-        labels = [examples[self.target]]
+        # labels = ['content' , 'wording']
+        # print('labels', labels)
         tokenized = self.tokenizer(examples[self.input_col],
                          padding=False,
                          truncation=True,
                          max_length=self.max_length)
         return {
             **tokenized,
-            "labels": labels,
+            "labels": [examples['content'], examples['wording']],
         }
     
     def tokenize_function_test(self, examples: pd.DataFrame):
@@ -520,6 +529,7 @@ class ContentScoreRegressor:
         """fine-tuning"""
         
         sep = self.tokenizer.sep_token
+        # print('sep', sep)
         train_df[self.input_col] = (
                     train_df["prompt_title"] + sep 
                     + train_df["prompt_question"] + sep 
@@ -531,30 +541,42 @@ class ContentScoreRegressor:
                     + valid_df["prompt_question"] + sep 
                     + valid_df["fixed_summary_text"]
                   )
-        print(train_df.shape, valid_df.shape)
-        # filter train_df with input_col have more than 5000 tokens
-
         train_df = train_df[[self.input_col] + self.target_cols]
         valid_df = valid_df[[self.input_col] + self.target_cols]
-        model_content = AutoModelForSequenceClassification.from_pretrained(
-            f"./input/{self.model_name}", 
-            config=self.model_config
-        )
+        
+        def model_init():
+            print("load model: ", self.model_name)
+            
+            return AutoModelForSequenceClassification.from_pretrained(
+                self.model_name, 
+                config=self.model_config
+            )
+        model_content = model_init()
+        # # freeze model 
+        # for param in model_content.parameters():
+        #     param.requires_grad = False
 
+        # # Unfreeze the pooler and classifier layers
+        # layers_to_unfreeze = ['pooler.dense.weight', 'pooler.dense.bias', 
+        #                     'classifier.weight', 'classifier.bias', 
+        #                     # 'deberta.encoder.LayerNorm.weight' , 'deberta.encoder.LayerNorm.bias'
+        #                     ]
+        # for name, param in model_content.named_parameters():
+        #     if name in layers_to_unfreeze:
+        #         param.requires_grad = True
         train_dataset = Dataset.from_pandas(train_df, preserve_index=False) 
         val_dataset = Dataset.from_pandas(valid_df, preserve_index=False) 
-        
         train_tokenized_datasets = train_dataset.map(self.tokenize_function, batched=False)
         val_tokenized_datasets = val_dataset.map(self.tokenize_function, batched=False)
 
-        # eg. "bert/fold_0/"
         model_fold_dir = os.path.join(self.model_dir, str(fold)) 
+        print('model_fold_dir', model_fold_dir)
         training_args = TrainingArguments(
             output_dir=model_fold_dir,
             load_best_model_at_end=True, # select best model
             learning_rate=learning_rate,
             per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=8,
+            per_device_eval_batch_size=batch_size ,
             num_train_epochs=num_train_epochs,
             weight_decay=weight_decay,
             report_to='none',
@@ -566,8 +588,9 @@ class ContentScoreRegressor:
             metric_for_best_model="rmse",
             save_total_limit=1
         )
-
+        # print('define trainer')
         trainer = Trainer(
+            # model_init=model_init,
             model=model_content,
             args=training_args,
             train_dataset=train_tokenized_datasets,
@@ -576,9 +599,12 @@ class ContentScoreRegressor:
             compute_metrics=compute_metrics,
             data_collator=self.data_collator
         )
-
+        print('start training')
+        # init model 
         trainer.train()
-        
+        # best_run = trainer.hyperparameter_search(n_trials=2, direction="maximize", hp_space=CFG.hp_space)
+        # print(best_run)
+        print('finish training')
         model_content.save_pretrained(self.model_dir)
         self.tokenizer.save_pretrained(self.model_dir)
 
@@ -612,7 +638,7 @@ class ContentScoreRegressor:
             output_dir=model_fold_dir,
             do_train = False,
             do_predict = True,
-            per_device_eval_batch_size = 4,   
+            per_device_eval_batch_size = CFG.batch_size,   
             dataloader_drop_last = False,
         )
 
@@ -628,10 +654,9 @@ class ContentScoreRegressor:
         return preds
 
 
-# ## Train by fold function
-# 
+# ## Training
 
-# In[39]:
+# In[53]:
 
 
 def train_by_fold(
@@ -649,13 +674,15 @@ def train_by_fold(
         save_steps: int,
         max_length:int
     ):
-
     # delete old model files
-    if os.path.exists(model_name):
-        shutil.rmtree(model_name)
+    lr = str(CFG.learning_rate).replace('.','')
+    model_dir_base = f"{model_name}_lr{lr}_freeze"
+    model_dir_base = model_dir_base.replace("/","_")
+    if os.path.exists(model_dir_base):
+        shutil.rmtree(model_dir_base)
     
-    os.mkdir(model_name)
-        
+    os.mkdir(model_dir_base)
+
     for fold in range(CFG.n_splits):
         print(f"fold {fold}:")
         
@@ -663,11 +690,11 @@ def train_by_fold(
         valid_data = train_df[train_df["fold"] == fold]
         
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        # print('done fold')
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir, 
@@ -675,7 +702,7 @@ def train_by_fold(
             attention_probs_dropout_prob=attention_probs_dropout_prob,
             max_length=max_length,
            )
-        
+        # print('check csr')
         csr.train(
             fold=fold,
             train_df=train_data,
@@ -686,7 +713,7 @@ def train_by_fold(
             num_train_epochs=num_train_epochs,
             save_steps=save_steps,
         )
-
+        # print('check csr train')
 def validate(
     train_df: pd.DataFrame,
     target:str,
@@ -701,12 +728,14 @@ def validate(
         print(f"fold {fold}:")
         
         valid_data = train_df[train_df["fold"] == fold]
-        
+        lr = str(CFG.learning_rate).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_freeze"
+        model_dir_base = model_dir_base.replace("/","_")
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir,
@@ -719,8 +748,9 @@ def validate(
             test_df=valid_data, 
             fold=fold
         )
-        
-        train_df.loc[valid_data.index, f"{target}_pred"] = pred
+        print('pred shape', pred.shape)
+        train_df.loc[valid_data.index, f"wording_pred"] = pred[:,0]
+        train_df.loc[valid_data.index, f"content_pred"] = pred[:,1]
 
     return train_df
     
@@ -734,15 +764,16 @@ def predict(
     max_length : int
     ):
     """predict using mean folds"""
-
     for fold in range(CFG.n_splits):
         print(f"fold {fold}:")
-        
+        lr = str(CFG.learning_rate).replace(".", "")
+        model_dir_base = f"{model_name}_lr{lr}_freeze"
+        model_dir_base = model_dir_base.replace("/","_")
         if save_each_model == True:
-            model_dir =  f"{target}/{model_name}/fold_{fold}"
+            model_dir =  f"{target}/{model_dir_base}/fold_{fold}"
         else: 
-            model_dir =  f"{model_name}/fold_{fold}"
-        csr = ContentScoreRegressor(
+            model_dir =  f"{model_dir_base}/fold_{fold}"
+        csr = ScoreRegressor(
             model_name=model_name,
             target=target,
             model_dir = model_dir, 
@@ -756,116 +787,108 @@ def predict(
             fold=fold
         )
         
-        test_df[f"{target}_pred_{fold}"] = pred
-    
-    test_df[f"{target}"] = test_df[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
-
+        # test_df[f"{target}_pred_{fold}"] = pred
+        test_df[f"wording_pred_{fold}"] = pred[:,0]
+        test_df[f"content_pred_{fold}"] = pred[:,1]
+        
+    # test_df[f"{target}"] = test_df[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
+    test_df[f"wording_pred"] = test_df[[f"wording_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
+    test_df[f"content_pred"] = test_df[[f"content_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
     return test_df
 
 
-# ## Test the model class
+# ## Train by fold function
+# 
 
-# In[40]:
-
-
-# model_name = CFG.model_name
-# fold= 0
-
-# model_dir = f"{model_name}/fold_{fold}"
-# target = "content"
-# hidden_dropout_prob = CFG.hidden_dropout_prob
-# attention_probs_dropout_prob = CFG.attention_probs_dropout_prob
-# max_length = CFG.max_lengthn_splits=CFG.n_splits,
-# batch_size=CFG.batch_size,
-# save_steps=CFG.save_steps,
-# max_length=CFG.max_length
-# learning_rate=CFG.learning_rate
-# weight_decay=CFG.weight_decay
-# num_train_epochs=CFG.num_train_epochs
-# train_df = train  
-# valid_df = test
+# In[54]:
 
 
-# In[41]:
+targets =  ["content", "wording"]
+train_by_fold(
+    train, # this is train dataset
+    model_name=CFG.model_name,
+    save_each_model=False,
+    target=targets,
+    learning_rate=CFG.learning_rate,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    weight_decay=CFG.weight_decay,
+    num_train_epochs=CFG.num_train_epochs,
+    n_splits=CFG.n_splits,
+    batch_size=CFG.batch_size,
+    save_steps=CFG.save_steps,
+    max_length=CFG.max_length
+)
 
 
-# # test ContentScoreRegressor
-# test_model_class = ContentScoreRegressor(
-#     model_name=model_name,
-#     target=target,
-#     model_dir = model_dir, 
-#     hidden_dropout_prob=hidden_dropout_prob,
-#     attention_probs_dropout_prob=attention_probs_dropout_prob,
-#     max_length=max_length,
-#    )
-
-# train_data = train_df[train_df["fold"] != fold]
-# valid_data = train_df[train_df["fold"] == fold]
-# train_data.shape
-# valid_data.shape
-# train_data.head()
-# test_model_class.train(
-#     fold=fold,
-#     train_df=train_data,
-#     valid_df=valid_data, 
-#     batch_size=batch_size,
-#     learning_rate=learning_rate,
-#     weight_decay=weight_decay,
-#     num_train_epochs=num_train_epochs,
-#     save_steps=save_steps,
-# )
-
-
-# ## Train the model
-
-# In[42]:
-
-
-for target in ["content", "wording"]:
-    train_by_fold(
-        train, # this is train dataset
-        model_name=CFG.model_name,
-        save_each_model=False,
-        target=target,
-        learning_rate=CFG.learning_rate,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        weight_decay=CFG.weight_decay,
-        num_train_epochs=CFG.num_train_epochs,
-        n_splits=CFG.n_splits,
-        batch_size=CFG.batch_size,
-        save_steps=CFG.save_steps,
-        max_length=CFG.max_length
-    )
-    
-    
-    train = validate(
-        train,
-        target=target,
-        save_each_model=False,
-        model_name=CFG.model_name,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        max_length=CFG.max_length
-    )
-
+train = validate(
+    train,
+    target=targets,
+    save_each_model=False,
+    model_name=CFG.model_name,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    max_length=CFG.max_length
+)
+for target in targets:
     rmse = mean_squared_error(train[target], train[f"{target}_pred"], squared=False)
     print(f"cv {target} rmse: {rmse}")
+test = predict(
+    test,
+    target=targets,
+    save_each_model=False,
+    model_name=CFG.model_name,
+    hidden_dropout_prob=CFG.hidden_dropout_prob,
+    attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
+    max_length=CFG.max_length
+)
 
-    test = predict(
-        test,
-        target=target,
-        save_each_model=False,
-        model_name=CFG.model_name,
-        hidden_dropout_prob=CFG.hidden_dropout_prob,
-        attention_probs_dropout_prob=CFG.attention_probs_dropout_prob,
-        max_length=CFG.max_length
-    )
+
+# In[55]:
+
+
+# # load model and see it params
+# model = AutoModelForSequenceClassification.from_pretrained('input/debertav3large')
+
+# for name , params in model.named_parameters():
+#     print(name, params.requires_grad)
+
+
+# In[56]:
+
+
+# for param in model.parameters():
+#     param.requires_grad = False
+
+# # Unfreeze the pooler and classifier layers
+# layers_to_unfreeze = ['pooler.dense.weight', 'pooler.dense.bias', 
+#                       'classifier.weight', 'classifier.bias']
+# for name, param in model.named_parameters():
+#     if name in layers_to_unfreeze:
+#         param.requires_grad = True
+
+
+# In[57]:
+
+
+train.head()
+
+
+# In[58]:
+
+
+preds = train[[f"{target}_pred" for target in targets]].values
+
+
+# In[59]:
+
+
+compute_mcrmse([train[targets].values, preds])
 
 
 # ## LGBM model
 
-# In[ ]:
+# In[60]:
 
 
 targets = ["content", "wording"]
@@ -876,7 +899,13 @@ drop_columns = ["fold", "student_id", "prompt_id", "text", "fixed_summary_text",
                ] + targets
 
 
-# In[ ]:
+# In[61]:
+
+
+content = train.content
+
+
+# In[62]:
 
 
 model_dict = {}
@@ -885,11 +914,9 @@ for target in targets:
     models = []
     
     for fold in range(CFG.n_splits):
-        if target == targets[1]:
-          drop_columns.remove(targets[0])
-        X_train_cv = train[train["fold"] != fold].drop(columns=drop_columns)
+        X_train_cv = train[train["fold"] != fold].drop(columns=drop_columns, inplace=False)
         y_train_cv = train[train["fold"] != fold][target]
-
+        
         X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns)
         y_eval_cv = train[train["fold"] == fold][target]
 
@@ -904,7 +931,8 @@ for target in targets:
             'learning_rate': 0.048,
             'max_depth': 3,
             'lambda_l1': 0.0,
-            'lambda_l2': 0.011
+            'lambda_l2': 0.011,
+            'verbose': -1,
         }
 
         evaluation_results = {}
@@ -915,8 +943,8 @@ for target in targets:
                           train_set=dtrain,
                           valid_sets=dval,
                           callbacks=[
-                              lgb.early_stopping(stopping_rounds=30, verbose=True),
-                               lgb.log_evaluation(100),
+                              lgb.early_stopping(stopping_rounds=30, verbose=False),
+                              #  lgb.log_evaluation(100),
                               lgb.callback.record_evaluation(evaluation_results)
                             ],
                           )
@@ -925,7 +953,7 @@ for target in targets:
     model_dict[target] = models
 
 
-# In[ ]:
+# In[63]:
 
 
 # save models
@@ -937,7 +965,7 @@ with open(f"{CFG.model_name}_model_dict.pickle", 'wb') as f:
 
 # ## CV Score
 
-# In[ ]:
+# In[64]:
 
 
 # cv
@@ -950,7 +978,7 @@ for target in targets:
     trues = []
     
     for fold, model in enumerate(models):
-        X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns)
+        X_eval_cv = train[train["fold"] == fold].drop(columns=drop_columns , inplace=False)
         y_eval_cv = train[train["fold"] == fold][target]
 
         pred = model.predict(X_eval_cv)
@@ -963,15 +991,17 @@ for target in targets:
     rmses = rmses + [rmse]
 
 print(f"mcrmse : {sum(rmses) / len(rmses)}")
-# deberta large mcrmse : 0.8319814894700264
+# print CFG config 
+for x in CFG.__dict__:
+    print(x, getattr(CFG, x))
 
 
 # ## Predict
 
-# In[ ]:
+# In[65]:
 
 
-drop_columns = [
+drop_columns_2 = [
                 #"fold", 
                 "student_id", "prompt_id", "text", "fixed_summary_text",
                 "prompt_question", "prompt_title", 
@@ -984,7 +1014,7 @@ drop_columns = [
                 ]
 
 
-# In[ ]:
+# In[66]:
 
 
 pred_dict = {}
@@ -993,15 +1023,16 @@ for target in targets:
     preds = []
 
     for fold, model in enumerate(models):
-        X_eval_cv = test.drop(columns=drop_columns)
-
+        X_eval_cv = test.drop(columns=drop_columns_2)
+        # print(X_eval_cv.head())
         pred = model.predict(X_eval_cv)
+        # print('pred shape'  , pred.shape)
         preds.append(pred)
     
     pred_dict[target] = preds
 
 
-# In[ ]:
+# In[67]:
 
 
 for target in targets:
@@ -1012,7 +1043,7 @@ for target in targets:
     test[target] = test[[f"{target}_pred_{fold}" for fold in range(CFG.n_splits)]].mean(axis=1)
 
 
-# In[ ]:
+# In[68]:
 
 
 test
@@ -1020,13 +1051,13 @@ test
 
 # ## Create Submission file
 
-# In[ ]:
+# In[69]:
 
 
 sample_submission
 
 
-# In[ ]:
+# In[70]:
 
 
 test[["student_id", "content", "wording"]].to_csv("submission.csv", index=False)

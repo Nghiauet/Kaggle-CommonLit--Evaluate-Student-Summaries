@@ -191,7 +191,7 @@ class CFG:
     attention_probs_dropout_prob=args.attention_probs_dropout_prob
     num_train_epochs=5
     n_splits=4
-    batch_size= 2
+    batch_size= 3
     random_seed=42
     save_steps=100
     max_length= 1462 

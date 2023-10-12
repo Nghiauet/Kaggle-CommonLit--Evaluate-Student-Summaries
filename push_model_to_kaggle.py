@@ -79,9 +79,12 @@ list_folders = [
                 # 'debertav3large_lr16e-05_att_0007', # upload 
                 # 'debertav3large_lr17e-05_att_0007', # upload 
                 # 'debertav3large_lr18e-05_att_0007' # upload 
-                'debertav3large_lr6e-06_att_0006',
-                'debertav3large_lr7e-06_att_0006',
-                'debertav3large_lr8e-06_att_0006',
+                # 'debertav3large_lr6e-06_att_0006',
+                # 'debertav3large_lr7e-06_att_0006',
+                # 'debertav3large_lr8e-06_att_0006',
+                'debertav3large_lr12e-05_clean_text',
+                'debertav3large_lr7e-06_clean_text',
+                'debertav3large_lr8e-06_clean_text',
                 ]  
 
 for folder in list_folders:
@@ -91,6 +94,6 @@ for folder in list_folders:
 
     zip_path = os.path.join(zip_directory, f"{folder}.zip")
     print(f"Zipping {folder} to {zip_path}")
-    zip_dir(folder, zip_path) 
+    # zip_dir(folder, zip_path) 
     print(f"Pushing {zip_directory} to Kaggle")
     push_to_kaggle(zip_directory, folder, f"CL_{folder}", f"CL_{folder}", username)
